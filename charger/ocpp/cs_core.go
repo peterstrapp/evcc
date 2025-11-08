@@ -1,6 +1,11 @@
 package ocpp
 
 import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/evcc-io/evcc/meter"
+
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/security"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
@@ -35,13 +40,80 @@ func (cs *CS) OnBootNotification(id string, request *core.BootNotificationReques
 }
 
 func (cs *CS) OnDataTransfer(id string, request *core.DataTransferRequest) (*core.DataTransferConfirmation, error) {
-	// no cp handler
+	// handle known vendor messages
+	if request != nil {
+		cs.log.DEBUG.Printf("DataTransfer from %s: vendorId=%s messageId=%s data=%v", id, request.VendorId, request.MessageId, request.Data)
+
+		// Example payload from MasterPlug:
+		// {"vendorId":"MasterPlug","messageId":"GetCTClampValue","data":"{\"current\":4110,\"voltage\":249700}"}
+		if request.VendorId == "MasterPlug" && request.MessageId == "GetCTClampValue" {
+			s, _ := request.Data.(string)
+			var inner json.RawMessage = json.RawMessage(s)
+			if cur, volt, err := meterParseMasterplug(inner); err == nil {
+				cs.log.DEBUG.Printf("parsed MasterPlug values from %s: current=%f, voltage=%f", id, cur, volt)
+				meter.Update(id, cur, volt)
+			} else {
+				cs.log.WARN.Printf("failed to parse MasterPlug payload from %s: %v", id, err)
+			}
+		}
+	}
 
 	res := &core.DataTransferConfirmation{
 		Status: core.DataTransferStatusAccepted,
 	}
 
 	return res, nil
+}
+
+// helper to parse MasterPlug payload where values may be provided in mA/mV
+func meterParseMasterplug(data json.RawMessage) (float64, float64, error) {
+	var obj map[string]any
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return 0, 0, err
+	}
+
+	var curVal float64
+	var voltVal float64
+
+	if v, ok := obj["current"]; ok {
+		switch t := v.(type) {
+		case float64:
+			curVal = t
+		case string:
+			// try parse numeric string
+			var tmp float64
+			if err := json.Unmarshal([]byte("\""+t+"\""), &tmp); err == nil {
+				curVal = tmp
+			}
+		}
+	}
+	if v, ok := obj["voltage"]; ok {
+		switch t := v.(type) {
+		case float64:
+			voltVal = t
+		case string:
+			var tmp float64
+			if err := json.Unmarshal([]byte("\""+t+"\""), &tmp); err == nil {
+				voltVal = tmp
+			}
+		}
+	}
+
+	if curVal == 0 && voltVal == 0 {
+		return 0, 0, fmt.Errorf("no values")
+	}
+
+	// The device reports current in mA and voltage in mV in the example. Convert to A and V.
+	// If values appear already in A/V, these conversions will produce very small numbers, but this is a best-effort heuristic.
+	// Heuristic: if current > 100 (likely mA) divide by 1000; if voltage > 1000 (likely mV) divide by 1000.
+	if curVal > 100 {
+		curVal = curVal / 1000.0
+	}
+	if voltVal > 1000 {
+		voltVal = voltVal / 1000.0
+	}
+
+	return curVal, voltVal, nil
 }
 
 func (cs *CS) OnHeartbeat(id string, request *core.HeartbeatRequest) (*core.HeartbeatConfirmation, error) {

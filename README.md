@@ -44,6 +44,30 @@ Featured in [PV Magazine](https://www.pv-magazine.de/2022/01/14/mit-open-source-
 
 You'll find everything you need in our [documentation](https://docs.evcc.io/en/).
 
+## OCPP DataTransfer meter (new)
+
+evcc can now consume OCPP DataTransfer messages (example: MasterPlug CT clamp) and expose them as a configurable meter.
+
+Usage
+- Add a meter of type `ocppdatatransfer` in your configuration. Optionally set `id` to the OCPP charge point id to only accept updates for that charge point. An empty `id` will accept updates from any connected charge point.
+
+Example configuration (YAML):
+
+```yaml
+meter:
+  - type: ocppdatatransfer
+    id: "<chargePointID>" # optional, empty string matches any
+```
+
+Notes
+- The built-in parser currently recognises `DataTransfer` messages with `vendorId: "MasterPlug"` and `messageId: "GetCTClampValue"` and expects a payload containing `current` and `voltage` values.
+- The parser uses a simple heuristic for units: if `current > 100` it is assumed to be mA and will be divided by 1000 to get A; if `voltage > 1000` it is assumed to be mV and will be divided by 1000 to get V. Adjustments can be made in future if needed.
+- `ocppdatatransfer` exposes instantaneous power, per-phase currents, voltages and per-phase powers. It is suitable as a grid meter for single-phase CT clamp devices.
+
+Logging
+- Incoming `DataTransfer` messages and parsing results are logged by evcc in the `ocpp` area (DEBUG/WARN). Enable debug logs for `ocpp` to trace incoming messages and parsing outcomes.
+
+
 ## Contributing
 
 Technical details on how to contribute, how to add translations and how to build evcc from source can be found [here](CONTRIBUTING.md).
