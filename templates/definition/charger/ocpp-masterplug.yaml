@@ -1,0 +1,17 @@
+template: ocpp-masterplug
+covers: ["ocpp-masterplug"]
+products:
+  - brand: Masterplug
+    description:
+      generic: Masterplug (OCPP)
+requirements:
+  evcc: ["sponsorship", "skiptest"]
+  description:
+    generic: Masterplug EVCM3ST7B-MP + EVCM3SS7B-MP
+params:
+  - preset: ocpp
+render: |
+  {{ include "ocpp" . }}
+  stacklevelzero: true
+  remotestart: true
+  meterinterval: 60s
