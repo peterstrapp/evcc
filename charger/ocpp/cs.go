@@ -9,6 +9,8 @@ import (
 	"github.com/evcc-io/evcc/util"
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/core"
+	"github.com/lorenzodonini/ocpp-go/ocppj"
+	"github.com/lorenzodonini/ocpp-go/ws"
 )
 
 type registration struct {
@@ -28,6 +30,11 @@ type CS struct {
 	log   *util.Logger
 	regs  map[string]*registration // guarded by mu mutex
 	txnId atomic.Int64
+
+	// lifecycle objects for start/stop
+	wsServer   ws.Server
+	dispatcher *ocppj.DefaultServerDispatcher
+	endpoint   *ocppj.Server
 }
 
 // errorHandler logs error channel

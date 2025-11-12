@@ -17,53 +17,108 @@ import (
 )
 
 var (
-	once     sync.Once
-	instance *CS
+	instanceMu sync.Mutex
+	instance   *CS
 )
 
-func Instance() *CS {
-	once.Do(func() {
-		log := util.NewLogger("ocpp")
+// Start creates and starts the OCPP central system. If already started, returns the existing instance.
+func Start() (*CS, error) {
+	instanceMu.Lock()
+	defer instanceMu.Unlock()
 
-		server := ws.NewServer()
-		server.SetCheckOriginHandler(func(r *http.Request) bool { return true })
+	if instance != nil {
+		return instance, nil
+	}
 
-		dispatcher := ocppj.NewDefaultServerDispatcher(ocppj.NewFIFOQueueMap(0))
-		dispatcher.SetTimeout(Timeout)
+	log := util.NewLogger("ocpp")
 
-		endpoint := ocppj.NewServer(server, dispatcher, nil, core.Profile, remotetrigger.Profile, smartcharging.Profile, security.Profile)
-		endpoint.SetInvalidMessageHook(func(client ws.Channel, err *ocpp.Error, rawMessage string, parsedFields []any) *ocpp.Error {
-			log.ERROR.Printf("%v (%s)", err, rawMessage)
-			return nil
-		})
+	server := ws.NewServer()
+	server.SetCheckOriginHandler(func(r *http.Request) bool { return true })
 
-		cs := ocpp16.NewCentralSystem(endpoint, server)
+	dispatcher := ocppj.NewDefaultServerDispatcher(ocppj.NewFIFOQueueMap(0))
+	dispatcher.SetTimeout(Timeout)
 
-		instance = &CS{
-			log:           log,
-			regs:          make(map[string]*registration),
-			CentralSystem: cs,
-		}
-
-		instance.txnId.Store(time.Now().UTC().Unix())
-
-		ocppj.SetLogger(instance)
-
-		cs.SetCoreHandler(instance)
-		cs.SetSecurityHandler(instance)
-		cs.SetNewChargePointHandler(instance.NewChargePoint)
-		cs.SetChargePointDisconnectedHandler(instance.ChargePointDisconnected)
-
-		go instance.errorHandler(cs.Errors())
-		go cs.Start(8887, "/{ws}")
-
-		// wait for server to start
-		for range time.Tick(10 * time.Millisecond) {
-			if dispatcher.IsRunning() {
-				break
-			}
-		}
+	endpoint := ocppj.NewServer(server, dispatcher, nil, core.Profile, remotetrigger.Profile, smartcharging.Profile, security.Profile)
+	endpoint.SetInvalidMessageHook(func(client ws.Channel, err *ocpp.Error, rawMessage string, parsedFields []any) *ocpp.Error {
+		log.ERROR.Printf("%v (%s)", err, rawMessage)
+		return nil
 	})
 
-	return instance
+	cs := ocpp16.NewCentralSystem(endpoint, server)
+
+	inst := &CS{
+		log:           log,
+		regs:          make(map[string]*registration),
+		CentralSystem: cs,
+		wsServer:      server,
+		dispatcher:    dispatcher,
+		endpoint:      endpoint,
+	}
+
+	inst.txnId.Store(time.Now().UTC().Unix())
+
+	ocppj.SetLogger(inst)
+
+	cs.SetCoreHandler(inst)
+	cs.SetSecurityHandler(inst)
+	cs.SetNewChargePointHandler(inst.NewChargePoint)
+	cs.SetChargePointDisconnectedHandler(inst.ChargePointDisconnected)
+
+	// publish instance early so other goroutines that call Instance() don't get nil
+	instance = inst
+
+	go inst.errorHandler(cs.Errors())
+	go cs.Start(8887, "/{ws}")
+
+	// wait for server to start
+	for range time.Tick(10 * time.Millisecond) {
+		if dispatcher.IsRunning() {
+			break
+		}
+	}
+
+	return instance, nil
+}
+
+// Stop stops the running OCPP central system if any.
+func Stop() error {
+	instanceMu.Lock()
+	inst := instance
+	instanceMu.Unlock()
+
+	if inst == nil || inst.CentralSystem == nil {
+		return nil
+	}
+
+	// stop central system
+	inst.CentralSystem.Stop()
+
+	// wait for dispatcher to stop
+	for i := 0; i < 200; i++ {
+		if inst.dispatcher == nil || !inst.dispatcher.IsRunning() {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	instanceMu.Lock()
+	instance = nil
+	instanceMu.Unlock()
+
+	return nil
+}
+
+// Restart stops and starts the OCPP central system.
+func Restart() error {
+	if err := Stop(); err != nil {
+		return err
+	}
+	_, err := Start()
+	return err
+}
+
+// Instance returns the current instance if started, otherwise nil.
+func Instance() *CS {
+	inst, _ := Start()
+	return inst
 }

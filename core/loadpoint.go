@@ -29,6 +29,8 @@ import (
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/evcc-io/evcc/util/modbus"
 	"github.com/evcc-io/evcc/util/telemetry"
+	"strings"
+	"github.com/evcc-io/evcc/charger/ocpp"
 )
 
 const (
@@ -1079,8 +1081,18 @@ func statusEvents(prevStatus, status api.ChargeStatus) []string {
 // updateChargerStatus updates charger status and detects car connected/disconnected events
 func (lp *Loadpoint) updateChargerStatus() (bool, error) {
 	statusChanges, err := lp.getStatusChanges()
-	if err != nil || len(statusChanges) == 0 {
+	if err != nil {
+		// restart OCPP server on charger status timeouts
+		if strings.Contains(err.Error(), "timeout") {
+			lp.log.WARN.Printf("charger status timeout, restarting ocpp server: %v", err)
+			_ = ocpp.Restart()
+		}
+
 		return false, err
+	}
+
+	if len(statusChanges) == 0 {
+		return false, nil
 	}
 
 	var welcomeCharge bool
