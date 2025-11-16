@@ -111,7 +111,7 @@ func (conn *Connector) GetScheduleLimit(duration int) (float64, error) {
 // WatchDog triggers meter values messages if older than timeout.
 // Must be wrapped in a goroutine.
 func (conn *Connector) WatchDog(ctx context.Context, timeout time.Duration) {
-	tick := time.NewTicker(2 * time.Second)
+	tick := time.NewTicker(5 * time.Second)
 	for {
 		conn.mu.Lock()
 		update := conn.clock.Since(conn.meterUpdated) > timeout
@@ -200,7 +200,15 @@ func (conn *Connector) isWaitingForAuth() bool {
 // isMeterTimeout checks if meter values are outdated.
 // Must only be called while holding lock.
 func (conn *Connector) isMeterTimeout() bool {
-	return conn.clock.Since(conn.meterUpdated) > max(conn.meterInterval+10*time.Second, Timeout)
+	isTimeout := conn.clock.Since(conn.meterUpdated) > max(conn.meterInterval+10*time.Second, Timeout)
+	if isTimeout {
+		if conn.meterUpdated.IsZero() {
+			conn.log.WARN.Printf("isMeterTimeout: meter timeout (last update: never)")
+		} else {
+			conn.log.WARN.Printf("isMeterTimeout: meter timeout (last update: %s)", conn.meterUpdated.Format(time.RFC3339))
+		}
+	}
+	return isTimeout
 }
 
 var _ api.CurrentGetter = (*Connector)(nil)

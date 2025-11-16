@@ -60,6 +60,9 @@ func (conn *Connector) OnMeterValues(request *core.MeterValuesRequest) (*core.Me
 	conn.mu.Lock()
 	defer conn.mu.Unlock()
 
+	// debug: incoming meter values
+	conn.log.DEBUG.Printf("OnMeterValues: connector=%d transactionId=%v meterValues=%d", conn.id, request.TransactionId, len(request.MeterValue))
+
 	if request.TransactionId != nil && *request.TransactionId > 0 &&
 		conn.txnId == 0 && conn.status != nil &&
 		(conn.status.Status == core.ChargePointStatusCharging ||
@@ -75,13 +78,25 @@ func (conn *Connector) OnMeterValues(request *core.MeterValuesRequest) (*core.Me
 			meterValue.Timestamp = types.NewDateTime(conn.clock.Now())
 		}
 
+		ts := meterValue.Timestamp.Time.Format(time.RFC3339)
+		conn.log.DEBUG.Printf("OnMeterValues: meterValue timestamp=%s samples=%d", ts, len(meterValue.SampledValue))
+
 		// ignore old meter value requests
 		if !meterValue.Timestamp.Time.Before(conn.meterUpdated) {
 			for _, sample := range meterValue.SampledValue {
+				// normalize value
 				sample.Value = strings.TrimSpace(sample.Value)
-				conn.measurements[getSampleKey(sample)] = sample
+
+				key := getSampleKey(sample)
+				conn.log.DEBUG.Printf("OnMeterValues: sample measurand=%s phase=%s key=%s value=%s unit=%s", sample.Measurand, sample.Phase, key, sample.Value, sample.Unit)
+
+				conn.measurements[key] = sample
 				conn.meterUpdated = meterValue.Timestamp.Time
+				// log update
+				conn.log.DEBUG.Printf("OnMeterValues: updated measurement key=%s value=%s unit=%s at=%s", key, sample.Value, sample.Unit, conn.meterUpdated.Format(time.RFC3339))
 			}
+		} else {
+			conn.log.TRACE.Printf("OnMeterValues: ignoring old meterValue timestamp=%s (last=%s)", ts, conn.meterUpdated)
 		}
 	}
 
