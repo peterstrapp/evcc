@@ -33,10 +33,11 @@ const (
 	ChargerStatusReason = "chargerStatusReason" // either awaiting authorization or disconnect required
 
 	// loadpoint status
-	Enabled   = "enabled"   // loadpoint enabled
-	Connected = "connected" // connected
-	Charging  = "charging"  // charging
-	Dimmed    = "dimmed"    // dimmed pseudo-status
+	Enabled       = "enabled"       // loadpoint enabled
+	Connected     = "connected"     // connected
+	Charging      = "charging"      // charging
+	ChargerStatus = "chargerStatus" // charger status (A-F)
+	Dimmed        = "dimmed"        // dimmed pseudo-status
 
 	// loadpoint setpoint
 	OfferedCurrent = "offeredCurrent" // offered current

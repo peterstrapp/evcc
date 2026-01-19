@@ -1080,7 +1080,14 @@ func statusEvents(prevStatus, status api.ChargeStatus) []string {
 
 // updateChargerStatus updates charger status and detects car connected/disconnected events
 func (lp *Loadpoint) updateChargerStatus() (bool, error) {
-	statusChanges, err := lp.getStatusChanges()
+	status, err := lp.charger.Status()
+	lp.log.DEBUG.Printf("charger status: %s", status)
+	lp.publish(keys.chargerStatus, status)
+	if err != nil {
+		return false, fmt.Errorf("charger status: %w", err)
+	}
+
+	statusChanges, err := lp.getStatusChanges(status)
 	if err != nil || len(statusChanges) == 0 {
 		return false, err
 	}
@@ -1115,15 +1122,8 @@ func (lp *Loadpoint) updateChargerStatus() (bool, error) {
 }
 
 // getStatusChanges checks charger status and returns a chronological list of status changes
-func (lp *Loadpoint) getStatusChanges() ([]api.ChargeStatus, error) {
+func (lp *Loadpoint) getStatusChanges(status api.ChargeStatus) ([]api.ChargeStatus, error) {
 	var res []api.ChargeStatus
-
-	status, err := lp.charger.Status()
-	if err != nil {
-		return nil, fmt.Errorf("charger status: %w", err)
-	}
-
-	lp.log.DEBUG.Printf("charger status: %s", status)
 
 	// detect if charger status changed
 	prevStatus := lp.GetStatus()
