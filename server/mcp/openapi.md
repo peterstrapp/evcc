@@ -34,7 +34,7 @@ Whether the current user is logged in.
 
 ## login
 
-Administrator login. Returns authorization cookie required for all protected endpoints.
+Administrator login. Returns authorization cookie required for all protected endpoints (Basic Auth with the admin password is also accepted).
 
 **Tags:** auth
 
@@ -1159,4 +1159,3 @@ call updateVehicleRepeatingPlans {
   "requestBody": "..."
 }
 ```
-

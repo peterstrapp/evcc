@@ -59,6 +59,11 @@ func updatePasswordHandler(authObject auth.Auth) http.HandlerFunc {
 	}
 }
 
+func basicAuthPassword(r *http.Request) (string, bool) {
+	_, password, ok := r.BasicAuth()
+	return password, ok
+}
+
 // read jwt from header and cookie
 func jwtFromRequest(r *http.Request) string {
 	// read from header
@@ -94,6 +99,11 @@ func authStatusHandler(authObject auth.Auth) http.HandlerFunc {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		if password, ok := basicAuthPassword(r); ok && authObject.IsAdminPasswordValid(password) {
+			w.Write([]byte("true"))
+			return
+		}
+
 		ok, err := authObject.ValidateJwtToken(jwtFromRequest(r))
 		if err != nil || !ok {
 			w.Write([]byte("false"))
@@ -157,6 +167,11 @@ func ensureAuthHandler(authObject auth.Auth) mux.MiddlewareFunc {
 
 			if authObject.GetAuthMode() == auth.Locked {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			if password, ok := basicAuthPassword(r); ok && authObject.IsAdminPasswordValid(password) {
+				next.ServeHTTP(w, r)
 				return
 			}
 
